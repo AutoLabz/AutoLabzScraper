@@ -1,6 +1,8 @@
-import puppeteer from 'puppeteer-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
-import { default as ProxyChain } from 'proxy-chain';
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+const { default: ProxyChain } = require('proxy-chain');
+const fs = require('fs');
+const path = require('path');
 
 puppeteer.use(StealthPlugin());
 
@@ -9,6 +11,12 @@ const proxies = [
   'http://username:password@proxy2:port',
   // Add more proxies as needed
 ];
+
+function getRandomInt(min, max) {
+  min = Math.ceil(min);
+  max = Math.floor(max);
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
 
 async function scrapeCars() {
   const browser = await puppeteer.launch({ headless: false });
@@ -19,6 +27,15 @@ async function scrapeCars() {
     const newProxyUrl = await ProxyChain.anonymizeProxy(oldProxyUrl);
 
     const page = await browser.newPage();
+
+    // Persist cookies to maintain session
+    const cookiesFilePath = path.join(__dirname, 'cookies.json');
+    if (fs.existsSync(cookiesFilePath)) {
+      const cookiesString = fs.readFileSync(cookiesFilePath);
+      const cookies = JSON.parse(cookiesString);
+      await page.setCookie(...cookies);
+    }
+
     await page.authenticate({
       username: 'username',
       password: 'password'
@@ -43,12 +60,19 @@ async function scrapeCars() {
 
     results.push(...cars);
 
+    // Save cookies for the next session
+    const cookies = await page.cookies();
+    fs.writeFileSync(cookiesFilePath, JSON.stringify(cookies, null, 2));
+
     await page.close();
     await ProxyChain.closeAnonymizedProxy(newProxyUrl, true);
+
+    // Random delay to mimic human behavior
+    await new Promise(resolve => setTimeout(resolve, getRandomInt(2000, 5000)));
   }
 
   await browser.close();
   return results;
 }
 
-export { scrapeCars };
+module.exports = { scrapeCars };
